@@ -10,6 +10,18 @@ import { Construct } from 'constructs';
 
 export interface OBAwareBucketLambdaProps {
   /**
+   * The name of the event to be used in Metaflow
+   * @default - none, must be provided
+   */
+  readonly eventName: string;
+
+  /**
+   * Configuration string for Metaflow in JSON format
+   * @default - none, must be provided
+   */
+  readonly metaflowConfigStr: string;
+
+  /**
    * Optional existing bucket to use. If not provided, a new bucket will be created.
    * @default - A new bucket is created
    */
@@ -32,18 +44,6 @@ export interface OBAwareBucketLambdaProps {
    * @default - No suffix filter
    */
   readonly suffix?: string;
-
-  /**
-   * The name of the event to be used in Metaflow
-   * @default - none, must be provided
-   */
-  readonly eventName: string;
-
-  /**
-   * Configuration string for Metaflow in JSON format
-   * @default - none, must be provided
-   */
-  readonly metaflowConfigStr: string;
 
   /**
    * Optional cross-account IAM role ARN that should have access to the bucket
