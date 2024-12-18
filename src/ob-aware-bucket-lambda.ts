@@ -1,7 +1,10 @@
+import * as path from 'path';
+import { Duration } from 'aws-cdk-lib';
 import { ArnPrincipal, PolicyStatement } from 'aws-cdk-lib/aws-iam';
-import { Function, FunctionProps, IFunction } from 'aws-cdk-lib/aws-lambda';
+import { Architecture, Code, Function, Runtime, RuntimeFamily } from 'aws-cdk-lib/aws-lambda';
 import { Bucket, BucketProps, EventType, IBucket, NotificationKeyFilter } from 'aws-cdk-lib/aws-s3';
 import { LambdaDestination } from 'aws-cdk-lib/aws-s3-notifications';
+import { LambdaPowertoolsLayer } from 'cdk-aws-lambda-powertools-layer';
 
 import { Construct } from 'constructs';
 
@@ -19,18 +22,6 @@ export interface OBAwareBucketLambdaProps {
   readonly bucketProps?: BucketProps;
 
   /**
-   * Either provide an existing Lambda function or props to create a new one.
-   * If existingLambda is provided, lambdaProps will be ignored.
-   */
-  readonly existingLambda?: IFunction;
-
-  /**
-   * Props for creating a new Lambda function. Ignored if existingLambda is provided.
-   * Required if existingLambda is not provided.
-   */
-  readonly lambdaProps?: FunctionProps;
-
-  /**
    * Optional prefix filter for S3 notifications
    * @default - No prefix filter
    */
@@ -41,6 +32,18 @@ export interface OBAwareBucketLambdaProps {
    * @default - No suffix filter
    */
   readonly suffix?: string;
+
+  /**
+   * The name of the event to be used in Metaflow
+   * @default - none, must be provided
+   */
+  readonly eventName: string;
+
+  /**
+   * Configuration string for Metaflow in JSON format
+   * @default - none, must be provided
+   */
+  readonly metaflowConfigStr: string;
 
   /**
    * Optional cross-account IAM role ARN that should have access to the bucket
@@ -60,20 +63,35 @@ export class OBAwareBucketLambda extends Construct {
   constructor(scope: Construct, id: string, props: OBAwareBucketLambdaProps) {
     super(scope, id);
 
-    // Existing bucket creation/import logic
+    const powertoolsLayer = new LambdaPowertoolsLayer(this, 'powertoolsLayer', {
+      includeExtras: true,
+      runtimeFamily: RuntimeFamily.PYTHON,
+    });
+
     this.bucket =
       props.existingBucket ??
       new Bucket(this, 's3-lambda-bucket', {
         ...props.bucketProps,
       });
 
-    // Create the Lambda function
-    this.handler = new Function(this, 'Handler', props.lambdaProps);
+    this.handler = new Function(this, 'Handler', {
+      description: 'Trigger Metaflow runs with ArgoEvent()',
+      architecture: Architecture.X86_64,
+      runtime: Runtime.PYTHON_3_12,
+      code: Code.fromAsset(path.join(__dirname, '../src/lambda')),
+      handler: 'event_publisher.handler',
+      timeout: Duration.seconds(30),
+      layers: [powertoolsLayer],
+      memorySize: 256,
+      environment: {
+        METAFLOW_EVENT_NAME: props.eventName,
+        METAFLOW_CONFIG_STR: props.metaflowConfigStr,
+        BUCKET_NAME: this.bucket.bucketName,
+      },
+    });
 
-    // Grant the Lambda function permissions to read from the bucket
     this.bucket.grantRead(this.handler);
 
-    // Add cross-account access if role ARN is provided
     if (props.crossAccountRoleArn) {
       this.bucket.addToResourcePolicy(
         new PolicyStatement({
@@ -84,7 +102,6 @@ export class OBAwareBucketLambda extends Construct {
       );
     }
 
-    // Add the notification configuration
     const filters: NotificationKeyFilter = {
       ...(props.prefix && { prefix: props.prefix }),
       ...(props.suffix && { suffix: props.suffix }),
