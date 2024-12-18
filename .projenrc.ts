@@ -38,12 +38,12 @@ const project = new awscdk.AwsCdkConstructLibrary({
       arrowParens: ArrowParens.AVOID,
     },
   },
+  githubOptions: {
+    workflows: false
+  },
+  release:false,
   gitignore: ['cdk.out', '.idea/', 'animations/media', '**/__pycache__'],
 });
 
-project.addTask('deploy', {
-  exec: 'npx ts-node --project tsconfig.dev.json src/main.ts',
-  description: 'Deploy the CDK stack',
-});
 
 project.synth();
